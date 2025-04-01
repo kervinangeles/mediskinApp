@@ -1,12 +1,35 @@
-import { Image, StyleSheet, Text, TextInput, View, TouchableOpacity } from 'react-native';
+import { Image, StyleSheet, Text, TextInput, View, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import React, { useState } from 'react';
 import { colors } from '../utils/colors';
+import { FIREBASE_AUTH } from '../../FirebaseConfig';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 const SignupScreen = ({ navigation }) => {
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const auth = FIREBASE_AUTH;
 
-  const handleGenderSelect = (selectedGender) => {
-    setGender(selectedGender);
+  const handleSignUp = async () => {
+    if (password !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match!");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      Alert.alert("Success", "Account created! Please check your email.");
+      navigation.navigate('Login');
+    } catch (error) {
+      Alert.alert("Sign Up Failed", error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -14,35 +37,27 @@ const SignupScreen = ({ navigation }) => {
       <Image source={require("../assets/logo.png")} style={styles.bannerImage} />
       <View style={styles.formContainer}>
         <Text style={styles.title}>Sign Up</Text>
-        <Text style={styles.subtitle}>Please fill in this form to create an account</Text>
-        <TextInput placeholder="NAME" placeholderTextColor={colors.secondary} style={styles.input} />
+        <TextInput placeholder="NAME" placeholderTextColor={colors.secondary} style={styles.input} value={name} onChangeText={setName} />
         <View style={styles.row}>
-          <TextInput placeholder="AGE" placeholderTextColor={colors.secondary} style={[styles.input, styles.halfInput]} />
+          <TextInput placeholder="AGE" placeholderTextColor={colors.secondary} style={[styles.input, styles.halfInput]} value={age} onChangeText={setAge} />
           <View style={[styles.input, styles.halfInput, styles.genderContainer]}>
-            <TouchableOpacity
-              style={[styles.genderOption, gender === 'Male' && styles.selectedGender]}
-              onPress={() => handleGenderSelect('Male')}
-            >
+            <TouchableOpacity style={[styles.genderOption, gender === 'Male' && styles.selectedGender]} onPress={() => setGender('Male')}>
               <Text style={styles.genderText}>Male</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.genderOption, gender === 'Female' && styles.selectedGender]}
-              onPress={() => handleGenderSelect('Female')}
-            >
+            <TouchableOpacity style={[styles.genderOption, gender === 'Female' && styles.selectedGender]} onPress={() => setGender('Female')}>
               <Text style={styles.genderText}>Female</Text>
             </TouchableOpacity>
           </View>
         </View>
-        <TouchableOpacity style={styles.uploadButton}>
-          <Text style={styles.uploadButtonText}>UPLOAD PHOTO</Text>
+        <TextInput placeholder="EMAIL" placeholderTextColor={colors.secondary} style={styles.input} value={email} onChangeText={setEmail} />
+        <TextInput placeholder="PASSWORD" placeholderTextColor={colors.secondary} secureTextEntry style={styles.input} value={password} onChangeText={setPassword} />
+        <TextInput placeholder="CONFIRM PASSWORD" placeholderTextColor={colors.secondary} secureTextEntry style={styles.input} value={confirmPassword} onChangeText={setConfirmPassword} />
+        
+        <TouchableOpacity style={styles.signupButton} onPress={handleSignUp} disabled={loading}>
+          {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.signupButtonText}>SIGN UP</Text>}
         </TouchableOpacity>
-        <TextInput placeholder="EMAIL" placeholderTextColor={colors.secondary} style={styles.input} />
-        <TextInput placeholder="PASSWORD" placeholderTextColor={colors.secondary} secureTextEntry style={styles.input} />
-        <TextInput placeholder="CONFIRM PASSWORD" placeholderTextColor={colors.secondary} secureTextEntry style={styles.input} />
-        <TouchableOpacity
-          style={styles.signupButton}
-          onPress={() => navigation.navigate('Home')} >
-          <Text style={styles.signupButtonText}>SIGN UP</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+          <Text style={styles.loginText}>Already have an account? <Text style={styles.loginLink}>Log in</Text></Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -75,12 +90,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.primary,
     marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: colors.primary,
-    marginBottom: 20,
-    textAlign: 'center',
   },
   input: {
     width: '100%',
@@ -121,21 +130,6 @@ const styles = StyleSheet.create({
   genderText: {
     color: colors.secondary,
   },
-  uploadButton: {
-    width: '100%',
-    height: 50,
-    backgroundColor: colors.secondaryLight,
-    borderRadius: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: colors.secondary,
-  },
-  uploadButtonText: {
-    color: colors.primary,
-    fontSize: 16,
-  },
   signupButton: {
     width: '100%',
     height: 50,
@@ -149,5 +143,14 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  loginText: {
+    marginTop: 20,
+    color: colors.primary,
+  },
+  loginLink: {
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
+    color: colors.primaryDark,
   },
 });
