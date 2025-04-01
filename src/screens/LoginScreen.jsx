@@ -1,9 +1,28 @@
-import { Image, StyleSheet, Text, TextInput, View, TouchableOpacity } from 'react-native';
+import { Image, StyleSheet, Text, TextInput, View, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import React, { useState } from 'react';
 import { colors } from '../utils/colors';
+import { FIREBASE_AUTH } from '../../FirebaseConfig';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 const LoginScreen = ({ navigation }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const auth = FIREBASE_AUTH;
+
+  const logIn = async () => {
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      Alert.alert('Login Successful!', 'You have successfully logged in.');
+      navigation.navigate('Home'); // Navigate to home after successful login
+    } catch (error) {
+      Alert.alert('Login Failed', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -11,27 +30,41 @@ const LoginScreen = ({ navigation }) => {
       <View style={styles.formContainer}>
         <Image source={require("../assets/avatar.png")} style={styles.avatarImage} />
         <Text style={styles.title}>LOGIN</Text>
-        <TextInput placeholder="USERNAME" placeholderTextColor={colors.secondary} style={styles.input} />
-        <TextInput placeholder="PASSWORD" placeholderTextColor={colors.secondary} secureTextEntry style={styles.input} />
+        <TextInput
+          value={email}
+          placeholder="EMAIL"
+          placeholderTextColor={colors.secondary}
+          style={styles.input}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <TextInput
+          value={password}
+          placeholder="PASSWORD"
+          placeholderTextColor={colors.secondary}
+          secureTextEntry
+          style={styles.input}
+          onChangeText={setPassword}
+        />
+        
         <View style={styles.rememberMeContainer}>
           <TouchableOpacity
-            style={[
-              styles.checkbox,
-              { backgroundColor: rememberMe ? colors.primary : colors.secondaryLight },
-            ]}
+            style={[styles.checkbox, { backgroundColor: rememberMe ? colors.primary : colors.secondaryLight }]}
             onPress={() => setRememberMe(!rememberMe)}
           />
           <Text style={styles.rememberMeText}>Remember me</Text>
         </View>
-        <TouchableOpacity
-          style={styles.loginButton}
-          onPress={() => navigation.navigate('Home')}>
-          <Text style={styles.loginButtonText}>LOGIN</Text>
+
+        <TouchableOpacity style={styles.loginButton} onPress={logIn} disabled={loading}>
+          {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.loginButtonText}>LOGIN</Text>}
         </TouchableOpacity>
+
         <TouchableOpacity onPress={() => navigation.navigate('Forgot Password')}>
           <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
         </TouchableOpacity>
       </View>
+
       <TouchableOpacity onPress={() => navigation.navigate('Sign up')}>
         <Text style={styles.signUpText}>
           Don't have an account? <Text style={styles.signUpLink}>Sign up</Text>
