@@ -22,7 +22,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setActiveIndex((prevIndex) => (prevIndex + 1) % sampleImages.length); // Fixed: Use sampleImages instead of sample
+      setActiveIndex((prevIndex) => (prevIndex + 1) % sampleImages.length); 
       flatListRef.current?.scrollToIndex({ index: (activeIndex + 1) % sampleImages.length, animated: true });
     }, 5000);
     return () => clearInterval(interval);
