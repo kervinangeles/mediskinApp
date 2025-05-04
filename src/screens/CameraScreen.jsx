@@ -8,133 +8,112 @@ import {
   Alert,
   SafeAreaView,
   StatusBar,
-  Platform,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Camera, useCameraDevices } from 'react-native-vision-camera';
+import { requestAllCameraPermissions, checkCameraPermission } from '../utils/permissions';
 
 export default function CameraScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
-  const [cameraPermission, setCameraPermission] = useState(false);
+  const [permissionsStatus, setPermissionsStatus] = useState({
+    cameraGranted: false,
+    microphoneGranted: false,
+    storageGranted: false,
+    allGranted: false,
+    checking: true
+  });
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [cameraPosition, setCameraPosition] = useState('back');
   const [flash, setFlash] = useState('off');
-  const [isEmulator, setIsEmulator] = useState(false);
+  const [photo, setPhoto] = useState(null);
   
   const camera = useRef(null);
-  
-  // Safely handle camera devices - prevent undefined errors
-  let devices = null;
-  let device = null;
-  
-  // Move the try-catch inside a useEffect to prevent infinite re-renders
+  const devices = useCameraDevices();
+  const device = devices[cameraPosition];
+
+  // Check camera permissions when component mounts
   useEffect(() => {
-    try {
-      devices = useCameraDevices();
-      device = cameraPosition === 'back' ? devices?.back : devices?.front;
-    } catch (err) {
-      console.log('Camera devices error:', err);
-      setIsEmulator(true);
-    }
-  }, [cameraPosition]);
-  
-  // Request camera permissions
-  useEffect(() => {
-    async function checkPermissions() {
-      try {
-        const cameraPermissionStatus = await Camera.requestCameraPermission();
-        setCameraPermission(cameraPermissionStatus === 'granted');
-      } catch (err) {
-        console.log('Camera permission error:', err);
-        setIsEmulator(true);
-      }
-    }
+    const checkPermissions = async () => {
+      const cameraPermissionGranted = await checkCameraPermission();
+      setPermissionsStatus(prev => ({
+        ...prev,
+        cameraGranted: cameraPermissionGranted,
+        checking: false
+      }));
+    };
     
     checkPermissions();
-    
-    // Also check if running in emulator
-    const checkEmulator = async () => {
-      if (Platform.OS === 'android') {
-        const isEmu = await isEmulatorCheck();
-        setIsEmulator(isEmu);
-      }
-    };
-    
-    checkEmulator();
   }, []);
   
-  // Helper function to detect emulator
-  const isEmulatorCheck = async () => {
-    if (Platform.OS === 'ios') {
-      return false; // iOS simulator detection would go here
-    }
+  // Request necessary permissions when activating camera
+  const requestPermissions = async () => {
+    setPermissionsStatus(prev => ({ ...prev, checking: true }));
+    const permissions = await requestAllCameraPermissions();
+    setPermissionsStatus({
+      ...permissions,
+      checking: false
+    });
     
-    try {
-      // On Android, we can check various properties
-      // This is a simple check that should work for most cases
-      return (
-        Platform.OS === 'android' && 
-        (Build?.FINGERPRINT?.startsWith('generic') ||
-         Build?.FINGERPRINT?.startsWith('unknown') ||
-         Build?.MODEL?.includes('google_sdk') ||
-         Build?.MODEL?.includes('Emulator') ||
-         Build?.MODEL?.includes('Android SDK built for x86') ||
-         Build?.MANUFACTURER?.includes('Genymotion') ||
-         Build?.BRAND?.startsWith('generic') ||
-         Build?.DEVICE?.startsWith('generic'))
-      );
-    } catch (e) {
-      return false;
-    }
+    return permissions.allGranted;
   };
-
-  // Get camera device with proper lifecycle handling
-  useEffect(() => {
-    let isMounted = true;
-    
-    const setCameraDevice = async () => {
-      try {
-        // Wait for devices to be available
-        if (!devices) return;
-        
-        const newDevice = cameraPosition === 'back' ? devices?.back : devices?.front;
-        
-        if (isMounted && !newDevice) {
-          console.log('Camera device not available');
-          setIsEmulator(true);
-        }
-      } catch (err) {
-        if (isMounted) {
-          console.log('Camera device error:', err);
-          setIsEmulator(true);
-        }
-      }
-    };
-    
-    setCameraDevice();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [devices, cameraPosition]);
   
   useFocusEffect(
     useCallback(() => {
-      setModalVisible(true);
-      return () => setModalVisible(false);
-    }, [])
+      if (!cameraActive) {
+        setModalVisible(true);
+      }
+      return () => {
+        setModalVisible(false);
+      };
+    }, [cameraActive])
   );
 
-  const handleCameraPress = () => {
+  const handleCameraPress = async () => {
     setModalVisible(false);
+    
+    // Request permissions if not already granted
+    if (!permissionsStatus.allGranted) {
+      const granted = await requestPermissions();
+      if (!granted) {
+        Alert.alert(
+          "Permission Required", 
+          "Camera and storage permissions are needed to use this feature.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Settings", onPress: () => openSettings() }
+          ]
+        );
+        return;
+      }
+    }
+    
     setCameraActive(true);
   };
 
-  const handleUploadPress = () => {
+  const handleUploadPress = async () => {
     setModalVisible(false);
+    
+    // Only request storage permission for upload
+    if (!permissionsStatus.storageGranted) {
+      const { storageGranted } = await requestAllCameraPermissions();
+      if (!storageGranted) {
+        Alert.alert(
+          "Permission Required", 
+          "Storage permission is needed to upload photos.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Settings", onPress: () => openSettings() }
+          ]
+        );
+        return;
+      }
+    }
+    
     Alert.alert('Upload Selected', 'Opening Photo Library...');
+    // Here you would implement actual photo library access
   };
 
   const handleFlipCamera = () => {
@@ -142,72 +121,73 @@ export default function CameraScreen() {
   };
 
   const takePicture = async () => {
-    if (isEmulator) {
-      Alert.alert('Emulator Detected', 'Camera is not available in the emulator. This is a mock photo capture.');
-      setCameraActive(false);
+    if (!camera.current) {
+      Alert.alert('Error', 'Camera reference not available');
       return;
     }
     
-    if (camera.current && isCameraReady) {
-      try {
-        const photo = await camera.current.takePhoto({
-          flash: flash,
-          quality: 85,
-          enableShutterSound: false,
-        });
-        
-        setCameraActive(false);
-        Alert.alert('Success', 'Photo captured successfully!');
-        console.log(`Photo taken: ${photo.path}`);
-      } catch (error) {
-        Alert.alert('Error', 'Failed to take picture: ' + error.message);
-      }
-    } else {
-      Alert.alert('Error', 'Camera is not ready');
+    try {
+      const photo = await camera.current.takePhoto({
+        flash: flash,
+        quality: 90,
+        enableShutterSound: false,
+      });
+      
+      console.log('Photo captured:', photo);
+      setPhoto(photo);
+      setCameraActive(false);
+      
+      // Here you could navigate to a review screen with the captured photo
+      Alert.alert('Success', 'Photo captured successfully!');
+    } catch (error) {
+      console.error('Take picture error:', error);
+      Alert.alert('Camera Error', `Failed to take picture: ${error.message}`);
     }
-  };
-
-  // Rest of your component remains the same...
-  
-  // Render mock camera for emulator
-  const renderMockCamera = () => {
-    return (
-      <View style={[styles.cameraContainer, styles.cameraLoading]}>
-        <Text style={styles.loadingText}>
-          Camera Preview (Not available in emulator)
-        </Text>
-        <View style={styles.mockCameraOverlay}>
-          <Text style={styles.mockCameraText}>📷</Text>
-        </View>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => setCameraActive(false)}
-        >
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          onPress={takePicture} 
-          style={styles.captureButton}
-        >
-          <View style={styles.captureButtonInner} />
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.flipButton} 
-          onPress={handleFlipCamera}
-        >
-          <Text style={styles.flipButtonText}>Flip</Text>
-        </TouchableOpacity>
-      </View>
-    );
   };
 
   // Render camera view when active
   if (cameraActive) {
-    // If emulator is detected or device is undefined, show mock camera
-    if (isEmulator || !device || !cameraPermission) {
-      return renderMockCamera();
+    // Show loading when checking permissions
+    if (permissionsStatus.checking) {
+      return (
+        <View style={[styles.cameraContainer, styles.cameraLoading]}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+          <Text style={styles.loadingText}>Checking camera permissions...</Text>
+        </View>
+      );
+    }
+    
+    // Show error when permission is denied
+    if (!permissionsStatus.cameraGranted) {
+      return (
+        <View style={[styles.cameraContainer, styles.cameraLoading]}>
+          <Text style={styles.loadingText}>
+            Camera permission denied. Please enable camera access in your device settings.
+          </Text>
+          <TouchableOpacity 
+            style={styles.backButton} 
+            onPress={() => setCameraActive(false)}
+          >
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    
+    // Show loading when device is not yet available
+    if (!device) {
+      return (
+        <View style={[styles.cameraContainer, styles.cameraLoading]}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+          <Text style={styles.loadingText}>Loading camera...</Text>
+          <TouchableOpacity 
+            style={styles.backButton} 
+            onPress={() => setCameraActive(false)}
+          >
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      );
     }
 
     return (
@@ -215,9 +195,9 @@ export default function CameraScreen() {
         <StatusBar hidden />
         <Camera
           ref={camera}
-          style={styles.camera}
+          style={StyleSheet.absoluteFill}
           device={device}
-          isActive={cameraActive}
+          isActive={true}
           photo={true}
           onInitialized={() => setIsCameraReady(true)}
           enableZoomGesture
@@ -233,8 +213,12 @@ export default function CameraScreen() {
           <TouchableOpacity 
             onPress={takePicture} 
             style={styles.captureButton}
+            disabled={!isCameraReady}
           >
-            <View style={styles.captureButtonInner} />
+            <View style={[
+              styles.captureButtonInner, 
+              !isCameraReady && styles.captureButtonDisabled
+            ]} />
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -257,10 +241,45 @@ export default function CameraScreen() {
     );
   }
 
-  // Default view with modal remains unchanged
+  // Rest of your component stays the same...
+  // Photo preview screen (after taking a photo)
+  if (photo) {
+    return (
+      <View style={styles.previewContainer}>
+        {photo.path && (
+          <Image
+            source={{ uri: `file://${photo.path}` }}
+            style={styles.previewImage}
+          />
+        )}
+        <View style={styles.previewControls}>
+          <TouchableOpacity 
+            style={styles.previewButton}
+            onPress={() => {
+              setPhoto(null);
+              setCameraActive(true);
+            }}
+          >
+            <Text style={styles.previewButtonText}>Retake</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.previewButton, styles.previewSaveButton]}
+            onPress={() => {
+              Alert.alert('Photo Saved', 'Photo has been saved successfully!');
+              setPhoto(null);
+            }}
+          >
+            <Text style={styles.previewButtonText}>Use Photo</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // Default view with modal
   return (
     <View style={styles.container}>
-      {/* Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -297,6 +316,7 @@ export default function CameraScreen() {
   );
 }
 
+// Your existing styles remain the same...
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
@@ -360,19 +380,8 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     marginBottom: 20,
-  },
-  camera: {
-    flex: 1,
-  },
-  mockCameraOverlay: {
-    width: '100%',
-    height: '50%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#333',
-  },
-  mockCameraText: {
-    fontSize: 80,
+    textAlign: 'center',
+    paddingHorizontal: 40,
   },
   cameraControls: {
     position: 'absolute',
@@ -401,6 +410,9 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     backgroundColor: '#FFF',
+  },
+  captureButtonDisabled: {
+    backgroundColor: '#999',
   },
   backButton: {
     position: 'absolute',
@@ -450,5 +462,39 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: 'bold',
-  }
+  },
+  // Preview screen styles
+  previewContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
+  previewImage: {
+    flex: 1,
+    resizeMode: 'contain',
+  },
+  previewControls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    padding: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  previewButton: {
+    padding: 15,
+    borderRadius: 8,
+    backgroundColor: '#666',
+    width: '45%',
+    alignItems: 'center',
+  },
+  previewSaveButton: {
+    backgroundColor: '#005EB8',
+  },
+  previewButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });
